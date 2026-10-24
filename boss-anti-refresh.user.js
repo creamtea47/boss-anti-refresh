@@ -2,7 +2,7 @@
 // @name         BOSS 防刷新
 // @name:en      BOSS Anti Refresh
 // @namespace    https://github.com/creamtea47/boss-anti-refresh
-// @version      0.1.4
+// @version      0.1.5
 // @description  在 BOSS 全站运行，面向浏览器爬虫、自动化与调试场景，定向处理已识别反调试模块引发的刷新、后退和空白。
 // @description:en Runs across BOSS pages to target refresh, back navigation and blank pages caused by the recognized anti-debugging module.
 // @author       creamtea47
@@ -21,7 +21,8 @@
 (() => {
   'use strict';
 
-  // Reviewed 2026-10-24/25: SSR 309, sign-in 6906, and geek SPA 54294.
+  // Reviewed 2026-10-24/25: SSR 309, sign-in 6906, geek SPA 54294,
+  // and the standalone geek-seo v5447 Sign.encryptPwd detector.
   // These builds use different chunk queues and exports (a / X / noDebug).
   // SSR and geek callers also check an initialization callback handshake.
   // Preserve that callback and replace only the fingerprinted detector.
@@ -29,7 +30,7 @@
   const win = window;
   if (win.top !== win || win.location.protocol !== 'https:' ||
       win.location.hostname !== 'www.zhipin.com') return;
-  const version = '0.1.4';
+  const version = '0.1.5';
   const queueNames = ['webpackJsonp', 'webpackChunkfe_web_sign', 'webpackChunkgeek'];
   const marker = '__bossAntiRefreshQueueV2';
   const apply = Reflect.apply;
@@ -74,11 +75,17 @@
 
   function makeReplacement() {
     return function bossReviewedDetectorReplacement(module, exports) {
+      let initialized = false;
       function initialize(options, callback) {
         if (!options || !options.appName) return undefined;
         // Required by ef5591c.js: ie() increments ne before ae(store.state).
         if (typeof callback === 'function') {
           try { callback(); } catch (_) {}
+        }
+        if (!initialized) {
+          initialized = true;
+          report('已执行模块初始化替代实现；' +
+            (typeof callback === 'function' ? '已调用原初始化回调。' : '调用方未传初始化回调。'));
         }
         return { success: true, reason: '', check: () => true };
       }
@@ -89,6 +96,78 @@
         define(exports, name, { enumerable: true, get: () => initialize });
       }
     };
+  }
+
+  function inspectStandaloneSign(sign) {
+    if (!sign || typeof sign !== 'object') return sign;
+    const descriptor = getOwnDescriptor(sign, 'encryptPwd');
+    if (!descriptor || !('value' in descriptor) ||
+        !matchesReviewedDetector(descriptor.value)) return sign;
+    let source;
+    try { source = apply(functionSource, descriptor.value, []); }
+    catch (_) { return sign; }
+    // This misleadingly named method contains the reviewed standalone
+    // detector, not the SMS/password submission or encryption implementation.
+    if (!source.includes('appName:"zhipin_web_geek_jsp_web"') ||
+        !source.includes('window.Detail.initDg()')) return sign;
+
+    let initialized = false;
+    function bossReviewedStandaloneDetectorReplacement() {
+      const detail = win.Detail;
+      if (!detail || typeof detail.initDg !== 'function') {
+        report('独立页面初始化回调缺失，未完成初始化标记。', true);
+        return;
+      }
+      try {
+        // The tail of main.js checks Detail.dgTag === Sign.pwdDetail.
+        // Calling the original callback satisfies that check without changing
+        // login methods, token handling, agreement checks or captcha logic.
+        apply(detail.initDg, detail, []);
+        if (!initialized) {
+          initialized = true;
+          report('已执行 Sign.encryptPwd 替代实现，并调用 Detail.initDg 初始化回调。');
+        }
+      } catch (_) {
+        report('独立页面初始化回调失败，未完成初始化标记。', true);
+      }
+    }
+    try {
+      define(sign, 'encryptPwd', { ...descriptor, value: bossReviewedStandaloneDetectorReplacement });
+      report('已识别并替换独立页面反调试入口 Sign.encryptPwd；保留 Detail.initDg 初始化回调。');
+    } catch (_) {
+      report('独立页面 Sign.encryptPwd 不可改写，未生效。', true);
+    }
+    return sign;
+  }
+
+  function installStandaloneSign() {
+    const key = 'Sign';
+    const signMarker = '__bossAntiRefreshSignV1';
+    try {
+      const original = getOwnDescriptor(win, key);
+      if (original && original.get && original.get[signMarker]) return;
+      if (original && !('value' in original)) {
+        report('已有 Sign 访问器，未覆盖独立页面入口。', true);
+        return;
+      }
+      if (original && !original.configurable) {
+        inspectStandaloneSign(original.value);
+        report('Sign 不可重新定义，无法监听后续赋值。', true);
+        return;
+      }
+      let current = inspectStandaloneSign(original ? original.value : undefined);
+      const readSign = () => current;
+      define(readSign, signMarker, { value: true });
+      define(win, key, {
+        configurable: true,
+        enumerable: original ? original.enumerable : true,
+        get: readSign,
+        set: (value) => { current = inspectStandaloneSign(value); }
+      });
+      report('独立页面 Sign 入口已就绪，等待识别目标函数。');
+    } catch (_) {
+      report('独立页面 Sign 入口初始化失败，未生效。', true);
+    }
   }
 
   function inspectPayload(payload, queueName) {
@@ -178,4 +257,5 @@
   }
 
   for (const key of queueNames) installQueue(key);
+  installStandaloneSign();
 })();
