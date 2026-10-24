@@ -2,7 +2,7 @@
 // @name         BOSS 防刷新
 // @name:en      BOSS Anti Refresh
 // @namespace    https://github.com/creamtea47/boss-anti-refresh
-// @version      0.1.2
+// @version      0.1.3
 // @description  在 BOSS 全站运行，面向浏览器爬虫、自动化与调试场景，定向处理已识别反调试模块引发的刷新、后退和空白。
 // @description:en Runs across BOSS pages to target refresh, back navigation and blank pages caused by the recognized anti-debugging module.
 // @author       creamtea47
@@ -21,17 +21,17 @@
 (() => {
   'use strict';
 
-  // Companion to the generic anti-debugger script. Source reviewed 2026-10-24:
-  // zhipin-ssr-site/v5686/client/f30eda7.js, module 309, caller ef5591c.js.
-  // The original module's callback increments a counter checked by the caller.
-  // Omitting that callback can trigger the caller's memory-pressure branch.
-  // Only this module is replaced. Passport, token and verification code stay active.
+  // Reviewed 2026-10-24: SSR module 309 and sign-in module 6906.
+  // These builds use different chunk queues and named exports (a / X).
+  // The SSR caller also checks an initialization callback counter.
+  // Preserve that callback and replace only the fingerprinted detector.
 
   const win = window;
   if (win.top !== win || win.location.protocol !== 'https:' ||
       win.location.hostname !== 'www.zhipin.com') return;
-  const key = 'webpackJsonp';
-  const marker = '__bossSsrDebugGuardV1';
+  const version = '0.1.3';
+  const queueNames = ['webpackJsonp', 'webpackChunkfe_web_sign'];
+  const marker = '__bossAntiRefreshQueueV2';
   const apply = Reflect.apply;
   const getOwnDescriptor = Object.getOwnPropertyDescriptor;
   const define = Object.defineProperty;
@@ -47,7 +47,7 @@
     try {
       const fn = warning ? logWarn : logInfo;
       if (typeof fn === 'function') {
-        apply(fn, win.console, ['[BOSS 定向防跳转] ' + message]);
+        apply(fn, win.console, ['[BOSS 定向防跳转] v' + version + ' ' + message]);
       }
     } catch (_) {}
   }
@@ -70,7 +70,7 @@
   }
 
   function makeReplacement() {
-    return function bossReviewedDetectorReplacement(module, exports, webpackRequire) {
+    return function bossReviewedDetectorReplacement(module, exports) {
       function initialize(options, callback) {
         if (!options || !options.appName) return undefined;
         // Required by ef5591c.js: ie() increments ne before ae(store.state).
@@ -80,15 +80,15 @@
         return { success: true, reason: '', check: () => true };
       }
 
-      if (webpackRequire && typeof webpackRequire.d === 'function') {
-        webpackRequire.d(exports, 'a', () => initialize);
-      } else {
-        define(exports, 'a', { enumerable: true, get: () => initialize });
+      // Direct definitions work with both reviewed Webpack runtimes, whose
+      // require.d helpers accept incompatible argument shapes.
+      for (const name of ['a', 'X']) {
+        define(exports, name, { enumerable: true, get: () => initialize });
       }
     };
   }
 
-  function inspectPayload(payload) {
+  function inspectPayload(payload, queueName) {
     if (!isArray(payload)) return;
     const modules = payload[1];
     if (!modules || typeof modules !== 'object') return;
@@ -106,14 +106,14 @@
       }
       try {
         define(modules, id, { ...descriptor, value: replacement });
-        report('已识别并替换反调试模块 ' + id + '；保留初始化回调。');
+        report('已识别并替换反调试模块 ' + id + '（' + queueName + '）；保留初始化回调。');
       } catch (_) {
         report('模块 ' + id + ' 不可改写，未生效。', true);
       }
     }
   }
 
-  function hookQueue(queue) {
+  function hookQueue(queue, queueName) {
     if (!isArray(queue) || wrappedQueues.has(queue)) return queue;
     const pushDescriptor = getOwnDescriptor(queue, 'push');
     if (pushDescriptor && !pushDescriptor.configurable) {
@@ -122,7 +122,7 @@
     }
 
     // Queued chunks are processed before Webpack starts consuming them.
-    for (let i = 0; i < queue.length; i++) inspectPayload(queue[i]);
+    for (let i = 0; i < queue.length; i++) inspectPayload(queue[i], queueName);
     let currentPush = queue.push;
 
     function wrapPush(delegate) {
@@ -130,7 +130,7 @@
       // Each wrapper captures its own delegate. Webpack retains the previous
       // push as its parent callback; changing a shared delegate would recurse.
       return function bossGuardedChunkPush(...payloads) {
-        for (const payload of payloads) inspectPayload(payload);
+        for (const payload of payloads) inspectPayload(payload, queueName);
         return apply(delegate, this, payloads);
       };
     }
@@ -150,25 +150,29 @@
     return queue;
   }
 
-  try {
-    const original = getOwnDescriptor(win, key);
-    if (original && original.get && original.get[marker]) return;
-    if (original && !original.configurable) {
-      report('webpackJsonp 不可改写，未生效。', true);
-      return;
-    }
+  function installQueue(key) {
+    try {
+      const original = getOwnDescriptor(win, key);
+      if (original && original.get && original.get[marker]) return;
+      if (original && !original.configurable) {
+        report(key + ' 不可改写，未生效。', true);
+        return;
+      }
 
-    let queue = hookQueue(original ? win[key] : []);
-    const readQueue = () => queue;
-    define(readQueue, marker, { value: true });
-    define(win, key, {
-      configurable: true,
-      enumerable: original ? original.enumerable : true,
-      get: readQueue,
-      set: (nextQueue) => { queue = hookQueue(nextQueue); }
-    });
-    report('已就绪，等待识别目标模块；须整页刷新后生效。');
-  } catch (_) {
-    report('初始化失败，未生效。', true);
+      let queue = hookQueue(original ? win[key] : [], key);
+      const readQueue = () => queue;
+      define(readQueue, marker, { value: true });
+      define(win, key, {
+        configurable: true,
+        enumerable: original ? original.enumerable : true,
+        get: readQueue,
+        set: (nextQueue) => { queue = hookQueue(nextQueue, key); }
+      });
+      report(key + ' 已就绪，等待识别目标模块；须整页刷新后生效。');
+    } catch (_) {
+      report(key + ' 初始化失败，未生效。', true);
+    }
   }
+
+  for (const key of queueNames) installQueue(key);
 })();

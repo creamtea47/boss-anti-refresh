@@ -20,21 +20,25 @@
 
 ## 脚本怎么处理
 
-1. 在 `document-start` 阶段运行，尽早监听页面自己的 `webpackJsonp` 模块注册。
+1. 在 `document-start` 阶段运行，尽早监听公司页的 `webpackJsonp` 和登录页的 `webpackChunkfe_web_sign` 模块注册。
 2. 在模块交给 Webpack 执行前读取其函数源码。
 3. 只有同时匹配五个特征，才替换对应模块：`parent.__xbcw`、`largeObjectArray`、`__defineGetter__`、`Unable to obtain information`、`new Array(1e9)`。
-4. 替换实现保留初始化回调、导出接口和返回值形状，让页面其余初始化继续进行。
+4. 替换实现保留初始化回调、返回值形状，并同时提供已审查构建使用的 `a` 和 `X` 导出，让页面其余初始化继续进行。
 
 **保留回调是关键。** 调用方还会检查初始化计数；直接删除模块或换成空函数，可能触发另一处大量分配内存的分支。
 
-当前识别到的模块编号为 `309`，但编号不参与匹配。网站只调整编号时仍可识别；如果改写了源码特征，需要重新分析和更新补丁。
+当前公司页识别到的模块编号为 `309`，登录页为 `6906`，但编号不参与匹配。网站只调整编号时仍可识别；如果改写了源码特征，需要重新分析和更新补丁。
+
+### 为什么 v0.1.2 的全站匹配仍没覆盖登录页
+
+登录页使用另一套打包入口 `webpackChunkfe_web_sign`，导出名称也由公司页的 `a` 变为 `X`，Webpack 的导出辅助函数参数格式同样不同。v0.1.2 只扩大了网址范围，仍只监听旧队列，因此无法拦截这套登录页模块。v0.1.3 增加了登录队列，并直接定义两种导出接口，保持相同的五项模块特征检查。
 
 ## 安装和使用
 
 1. 安装 Tampermonkey 等用户脚本管理器。
 2. 打开上方 Greasy Fork 链接，安装「BOSS 防刷新」。
 3. 完整刷新需要使用的 BOSS 页面，让脚本在页面开始加载时运行。
-4. 如需确认，在控制台查找 `已识别并替换反调试模块`。只有 `已就绪` 代表钩子已安装，不代表已匹配到目标。
+4. 如需确认，在控制台查找带有 `v0.1.3` 的 `已识别并替换反调试模块`。只有 `已就绪` 代表钩子已安装，不代表已匹配到目标。登录页应看到 `webpackChunkfe_web_sign` 的命中记录。
 
 若此前手动装过「BOSS 公司页调试防跳转 · 定向补丁」，请停用旧版后再使用正式版，便于管理更新。
 
@@ -46,6 +50,8 @@
 | --- | --- |
 | Codex 连接浏览器，公司职位列表 | 已实测翻页 1→2→3→4→5→1，实际列表内容变化，持续数分钟保持可读 |
 | 公司列表内切换职位详情 | 已实测完整职责、要求和工作地址可读 |
+| 登录页 `/web/user/` | 已根据实际加载的构建新增登录队列与导出兼容；v0.1.3 待浏览器实测 |
+| 输入手机号、发送验证码后持续稳定 | 待 v0.1.3 安装后的现场验证 |
 | 独立 `/job_detail/` 页面 | 能短暂读取，随后仍可能自动退回列表；未修复 |
 | Chrome 开发者工具、其他 CDP 调试工具 | 兼容目标，尚未单独验证 |
 | GPT 等浏览器代理 | 兼容目标，尚未单独验证 |
@@ -104,6 +110,8 @@ https://raw.githubusercontent.com/creamtea47/boss-anti-refresh/main/boss-anti-re
 
 - [当时加载的反调试模块所在脚本](https://static.zhipin.com/zhipin-ssr-site/v5686/client/f30eda7.js)
 - [当时的模块调用方](https://static.zhipin.com/zhipin-ssr-site/v5686/client/ef5591c.js)
+- [登录页实际加载的模块所在脚本](https://static.zhipin.com/zhipin-sign/v5333/static/js/vendors.9a2efe85.js)
+- [登录页实际加载的调用方与模块运行时](https://static.zhipin.com/zhipin-sign/v5333/static/js/app.85b65004.js)
 - [Playwright 初始化脚本接口](https://playwright.dev/docs/api/class-browsercontext#browser-context-add-init-script)
 - [Puppeteer 初始化脚本接口](https://pptr.dev/api/puppeteer.page.evaluateonnewdocument)
 - [Greasy Fork 元信息与更新地址说明](https://greasyfork.org/zh-CN/help/meta-keys)
