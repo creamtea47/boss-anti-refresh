@@ -1,6 +1,6 @@
 # BOSS 防刷新
 
-**[从 Greasy Fork 安装](https://greasyfork.org/zh-CN)** · [反馈问题](https://github.com/creamtea47/boss-anti-refresh/issues)
+**[从 Greasy Fork 安装「BOSS 防刷新」](https://greasyfork.org/zh-CN/scripts/601962-boss-%E9%98%B2%E5%88%B7%E6%96%B0)** · [反馈问题](https://github.com/creamtea47/boss-anti-refresh/issues)
 
 面向爬虫、浏览器自动化和调试场景，处理 BOSS 公司职位页因反调试检测引发的异常刷新、后退与空白。
 
@@ -90,7 +90,7 @@ node examples/puppeteer.mjs '你的 BOSS 公司职位页 URL'
 
 ## 自动更新
 
-代码维护入口为本仓库的 `main` 分支。Greasy Fork 从该分支的脚本原始地址同步：
+代码维护入口为本仓库的 `main` 分支。Greasy Fork 已开启自动同步，从该分支的脚本原始地址获取更新：
 
 ```text
 https://raw.githubusercontent.com/creamtea47/boss-anti-refresh/main/boss-anti-refresh.user.js
