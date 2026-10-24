@@ -2,17 +2,16 @@
 // @name         BOSS 防刷新
 // @name:en      BOSS Anti Refresh
 // @namespace    https://github.com/creamtea47/boss-anti-refresh
-// @version      0.1.1
-// @description  面向浏览器爬虫、自动化与调试场景，定向处理 BOSS 公司职位页的异常刷新、后退和空白。
-// @description:en Targeted fix for anti-debugging refresh, back navigation and blank pages on BOSS company job listings.
+// @version      0.1.2
+// @description  在 BOSS 全站运行，面向浏览器爬虫、自动化与调试场景，定向处理已识别反调试模块引发的刷新、后退和空白。
+// @description:en Runs across BOSS pages to target refresh, back navigation and blank pages caused by the recognized anti-debugging module.
 // @author       creamtea47
 // @license      Copyright 2026 creamtea47
 // @homepageURL  https://github.com/creamtea47/boss-anti-refresh
 // @supportURL   https://github.com/creamtea47/boss-anti-refresh/issues
 // @updateURL    https://raw.githubusercontent.com/creamtea47/boss-anti-refresh/main/boss-anti-refresh.user.js
 // @downloadURL  https://raw.githubusercontent.com/creamtea47/boss-anti-refresh/main/boss-anti-refresh.user.js
-// @match        https://www.zhipin.com/gongsi/*
-// @match        https://www.zhipin.com/job_detail/*
+// @match        https://www.zhipin.com/*
 // @run-at       document-start
 // @sandbox      raw
 // @grant        none
@@ -30,8 +29,7 @@
 
   const win = window;
   if (win.top !== win || win.location.protocol !== 'https:' ||
-      win.location.hostname !== 'www.zhipin.com' ||
-      !/^\/(?:gongsi\/|job_detail\/)/.test(win.location.pathname)) return;
+      win.location.hostname !== 'www.zhipin.com') return;
   const key = 'webpackJsonp';
   const marker = '__bossSsrDebugGuardV1';
   const apply = Reflect.apply;

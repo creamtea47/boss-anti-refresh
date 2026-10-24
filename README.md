@@ -2,7 +2,7 @@
 
 **[从 Greasy Fork 安装「BOSS 防刷新」](https://greasyfork.org/zh-CN/scripts/601962-boss-%E9%98%B2%E5%88%B7%E6%96%B0)** · [反馈问题](https://github.com/creamtea47/boss-anti-refresh/issues)
 
-面向爬虫、浏览器自动化和调试场景，处理 BOSS 公司职位页因反调试检测引发的异常刷新、后退与空白。
+在 BOSS 全站运行，面向爬虫、浏览器自动化和调试场景，定向处理已识别反调试模块引发的异常刷新、后退与空白。
 
 当前已验证：Codex 连接浏览器后，公司职位列表第 1～5 页和列表内详情可用。**独立职位详情页仍有自动退回列表的问题，尚未解决。**
 
@@ -33,12 +33,12 @@
 
 1. 安装 Tampermonkey 等用户脚本管理器。
 2. 打开上方 Greasy Fork 链接，安装「BOSS 防刷新」。
-3. 完整刷新 BOSS 公司职位列表页，让脚本在页面开始加载时运行。
+3. 完整刷新需要使用的 BOSS 页面，让脚本在页面开始加载时运行。
 4. 如需确认，在控制台查找 `已识别并替换反调试模块`。只有 `已就绪` 代表钩子已安装，不代表已匹配到目标。
 
 若此前手动装过「BOSS 公司页调试防跳转 · 定向补丁」，请停用旧版后再使用正式版，便于管理更新。
 
-作用范围为 `https://www.zhipin.com/gongsi/*` 和 `https://www.zhipin.com/job_detail/*` 的顶层页面。进入匹配范围不等于该页面的所有反调试实现均已覆盖。
+从 v0.1.2 起，作用范围为 `https://www.zhipin.com/*` 的所有顶层页面，脚本内部也已移除路径限制。全站页面都会尝试识别目标模块；进入匹配范围不等于该页面的所有反调试实现均已覆盖。已完成的现场验证范围仍以以下记录为准。
 
 ## 场景与验证状态
 
@@ -63,13 +63,13 @@
 
 ```js
 await context.addInitScript({ path: './boss-anti-refresh.user.js' });
-// 此后再创建页面、访问 BOSS 公司职位页。
+// 此后再创建页面、访问需要使用的 BOSS 页面。
 ```
 
 示例：[examples/playwright.mjs](examples/playwright.mjs)。在仓库目录安装 `playwright` 及其浏览器后运行：
 
 ```sh
-node examples/playwright.mjs '你的 BOSS 公司职位页 URL'
+node examples/playwright.mjs '你的 BOSS 页面 URL'
 ```
 
 ### Puppeteer
@@ -83,7 +83,7 @@ await page.evaluateOnNewDocument(source);
 示例：[examples/puppeteer.mjs](examples/puppeteer.mjs)。安装 `puppeteer` 后运行：
 
 ```sh
-node examples/puppeteer.mjs '你的 BOSS 公司职位页 URL'
+node examples/puppeteer.mjs '你的 BOSS 页面 URL'
 ```
 
 使用 CDP 连接既有浏览器时，同样需要在目标页下一次加载之前完成初始化脚本注册。已经运行过的页面脚本不会被追溯替换。

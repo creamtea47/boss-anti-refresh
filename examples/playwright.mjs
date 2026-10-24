@@ -2,7 +2,7 @@ import { chromium } from 'playwright';
 import { fileURLToPath } from 'node:url';
 
 const targetUrl = process.argv[2];
-if (!targetUrl) throw new Error('请传入 BOSS 公司职位页 URL。');
+if (!targetUrl) throw new Error('请传入 BOSS 页面 URL。');
 
 const browser = await chromium.launch({ headless: false });
 const context = await browser.newContext();

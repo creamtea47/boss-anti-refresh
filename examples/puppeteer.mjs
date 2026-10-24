@@ -2,7 +2,7 @@ import puppeteer from 'puppeteer';
 import { readFile } from 'node:fs/promises';
 
 const targetUrl = process.argv[2];
-if (!targetUrl) throw new Error('请传入 BOSS 公司职位页 URL。');
+if (!targetUrl) throw new Error('请传入 BOSS 页面 URL。');
 
 const source = await readFile(new URL('../boss-anti-refresh.user.js', import.meta.url), 'utf8');
 const browser = await puppeteer.launch({ headless: false });
