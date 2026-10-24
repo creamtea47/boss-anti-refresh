@@ -2,7 +2,7 @@
 // @name         BOSS 防刷新
 // @name:en      BOSS Anti Refresh
 // @namespace    https://github.com/creamtea47/boss-anti-refresh
-// @version      0.1.3
+// @version      0.1.4
 // @description  在 BOSS 全站运行，面向浏览器爬虫、自动化与调试场景，定向处理已识别反调试模块引发的刷新、后退和空白。
 // @description:en Runs across BOSS pages to target refresh, back navigation and blank pages caused by the recognized anti-debugging module.
 // @author       creamtea47
@@ -21,16 +21,16 @@
 (() => {
   'use strict';
 
-  // Reviewed 2026-10-24: SSR module 309 and sign-in module 6906.
-  // These builds use different chunk queues and named exports (a / X).
-  // The SSR caller also checks an initialization callback counter.
+  // Reviewed 2026-10-24/25: SSR 309, sign-in 6906, and geek SPA 54294.
+  // These builds use different chunk queues and exports (a / X / noDebug).
+  // SSR and geek callers also check an initialization callback handshake.
   // Preserve that callback and replace only the fingerprinted detector.
 
   const win = window;
   if (win.top !== win || win.location.protocol !== 'https:' ||
       win.location.hostname !== 'www.zhipin.com') return;
-  const version = '0.1.3';
-  const queueNames = ['webpackJsonp', 'webpackChunkfe_web_sign'];
+  const version = '0.1.4';
+  const queueNames = ['webpackJsonp', 'webpackChunkfe_web_sign', 'webpackChunkgeek'];
   const marker = '__bossAntiRefreshQueueV2';
   const apply = Reflect.apply;
   const getOwnDescriptor = Object.getOwnPropertyDescriptor;
@@ -62,11 +62,14 @@
     }
     // Independent signatures from the reviewed anti-DevTools module.
     // A changed or unrelated module is left alone when a signature is missing.
-    return source.includes('parent.__xbcw') &&
-      source.includes('largeObjectArray') &&
+    const common = source.includes('largeObjectArray') &&
       source.includes('__defineGetter__') &&
       source.includes('Unable to obtain information') &&
-      source.includes('new Array(1e9)');
+      /\b(?:new\s+)?Array\s*\(\s*1e9\s*\)/.test(source);
+    const legacyFrame = source.includes('parent.__xbcw');
+    const geekFrame = source.includes('createElement("iframe")') &&
+      source.includes('.contentWindow') && source.includes('noDebug:');
+    return common && (legacyFrame || geekFrame);
   }
 
   function makeReplacement() {
@@ -82,7 +85,7 @@
 
       // Direct definitions work with both reviewed Webpack runtimes, whose
       // require.d helpers accept incompatible argument shapes.
-      for (const name of ['a', 'X']) {
+      for (const name of ['a', 'X', 'noDebug']) {
         define(exports, name, { enumerable: true, get: () => initialize });
       }
     };
