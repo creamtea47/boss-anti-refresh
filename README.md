@@ -131,3 +131,7 @@ https://raw.githubusercontent.com/creamtea47/boss-anti-refresh/main/boss-anti-re
 - [Playwright 初始化脚本接口](https://playwright.dev/docs/api/class-browsercontext#browser-context-add-init-script)
 - [Puppeteer 初始化脚本接口](https://pptr.dev/api/puppeteer.page.evaluateonnewdocument)
 - [Greasy Fork 元信息与更新地址说明](https://greasyfork.org/zh-CN/help/meta-keys)
+
+## 友链
+
+- [LINUX DO 社区](https://linux.do/)
