@@ -2,7 +2,7 @@
 // @name         BOSS 防刷新
 // @name:en      BOSS Anti Refresh
 // @namespace    https://github.com/creamtea47/boss-anti-refresh
-// @version      0.1.5
+// @version      0.1.6
 // @description  在 BOSS 全站运行，面向浏览器爬虫、自动化与调试场景，定向处理已识别反调试模块引发的刷新、后退和空白。
 // @description:en Runs across BOSS pages to target refresh, back navigation and blank pages caused by the recognized anti-debugging module.
 // @author       creamtea47
@@ -26,12 +26,16 @@
   // These builds use different chunk queues and exports (a / X / noDebug).
   // SSR and geek callers also check an initialization callback handshake.
   // Preserve that callback and replace only the fingerprinted detector.
+  // Reviewed 2026-11-17: chat-new v5580 embeds the detector in its App
+  // factory. Capture its initial module table before the entry runs and
+  // replace only that detector call, never the complete application module.
 
   const win = window;
   if (win.top !== win || win.location.protocol !== 'https:' ||
       win.location.hostname !== 'www.zhipin.com') return;
-  const version = '0.1.5';
-  const queueNames = ['webpackJsonp', 'webpackChunkfe_web_sign', 'webpackChunkgeek'];
+  const version = '0.1.6';
+  const chatQueueName = 'webpackChunkGeekChat';
+  const queueNames = ['webpackJsonp', 'webpackChunkfe_web_sign', 'webpackChunkgeek', chatQueueName];
   const marker = '__bossAntiRefreshQueueV2';
   const apply = Reflect.apply;
   const getOwnDescriptor = Object.getOwnPropertyDescriptor;
@@ -41,6 +45,8 @@
   const functionSource = Function.prototype.toString;
   const wrappedQueues = new WeakSet();
   const replacements = new WeakMap();
+  const chatReplacements = new WeakSet();
+  const compileFunction = Function;
   const logInfo = win.console && win.console.info;
   const logWarn = win.console && win.console.warn;
 
@@ -96,6 +102,92 @@
         define(exports, name, { enumerable: true, get: () => initialize });
       }
     };
+  }
+
+  function reviewedChatCall(factory) {
+    if (typeof factory !== 'function' || chatReplacements.has(factory) ||
+        !matchesReviewedDetector(factory)) return null;
+    let source;
+    try { source = apply(functionSource, factory, []); }
+    catch (_) { return null; }
+    // This is a reviewed application factory, not a detector-only module.
+    // Both the callback declaration and its subsequent guard must agree.
+    if (!source.includes('getABData("nd_result_13912_number_1")') ||
+        source.includes('__bossAntiRefreshChatInitializeV1') ||
+        /\b(?:__webpack_require__|__WEBPACK_EXTERNAL_MODULE_\w*)\b/.test(source)) return null;
+    const calls = [...source.matchAll(/([A-Za-z_$][\w$]*)\s*\(\s*\{\s*env\s*:\s*"prod"\s*,\s*appName\s*:\s*"fe-geek-chat"\s*\}\s*,\s*([A-Za-z_$][\w$]*)\.cb\s*\)/g)];
+    if (calls.length !== 1) return null;
+    const call = calls[0];
+    if (call.index > 0 && /[\w$.]/.test(source[call.index - 1])) return null;
+    const state = call[2].replace(/[$]/g, '\\$');
+    const handshake = new RegExp('\\b(?:var|let|const)\\s+' + state +
+      '\\s*=\\s*\\{\\s*sta\\s*:\\s*"XSd"\\s*,\\s*cb\\s*:\\s*function\\s*\\(\\s*\\)\\s*\\{\\s*' +
+      state + '\\.sta\\s*=\\s*"sd"\\s*;?\\s*\\}\\s*\\}');
+    const guard = new RegExp('"sd"\\s*!==\\s*' + state + '\\.sta\\s*&&\\s*function\\s*\\(');
+    if (!handshake.test(source) || !guard.test(source)) return null;
+    return { source, start: call.index, nameLength: call[1].length };
+  }
+
+  function inspectChatModules(modules, initial = false) {
+    if (!modules || typeof modules !== 'object') return;
+    const candidates = [];
+    for (const id of ownKeys(modules)) {
+      const descriptor = getOwnDescriptor(modules, id);
+      if (!descriptor || !('value' in descriptor)) continue;
+      const match = reviewedChatCall(descriptor.value);
+      if (match) candidates.push({ id, descriptor, match });
+    }
+    if (candidates.length !== 1) {
+      if (initial || candidates.length > 1) {
+        report(candidates.length > 1 ? '聊天页入口匹配不唯一，保留原模块，未生效。' :
+          '未识别到已审查的聊天页启动入口；保留原模块，未生效。', true);
+      }
+      return;
+    }
+    const { id, descriptor, match } = candidates[0];
+    const helperName = '__bossAntiRefreshChatInitializeV1';
+    const changedSource = match.source.slice(0, match.start) + helperName +
+      match.source.slice(match.start + match.nameLength);
+    let initialized = false;
+    function initialize(options, callback) {
+      if (!options || options.appName !== 'fe-geek-chat' || typeof callback !== 'function') {
+        report('聊天页原初始化回调缺失，未完成初始化标记。', true);
+        return undefined;
+      }
+      // The reviewed caller checks its own sta === "sd" immediately after
+      // this call. Invoke its actual callback rather than forge that marker.
+      callback();
+      if (!initialized) {
+        initialized = true;
+        report('已执行聊天页替代实现，原初始化回调已执行。');
+      }
+      return { success: true, reason: '', check: () => true };
+    }
+    try {
+      // The reviewed factory takes its imports through its three Webpack
+      // parameters. Rebuild that factory in the page realm, preserving its
+      // business code and binding only the replacement initializer.
+      const build = compileFunction(helperName, '"use strict";return (' + changedSource + '\n);');
+      const replacement = build(initialize);
+      if (typeof replacement !== 'function') throw new TypeError('Invalid chat factory');
+      define(modules, id, { ...descriptor, value: replacement });
+      chatReplacements.add(replacement);
+      report('已识别并替换聊天页启动入口 ' + id + '；仅替换检测调用，保留原初始化回调与聊天业务。');
+    } catch (_) {
+      report('聊天页入口无法重建或改写（可能受页面 CSP 限制）；保留原模块，未生效。', true);
+    }
+  }
+
+  function captureChatRuntime(require) {
+    try {
+      if (typeof require !== 'function' || !require.m || typeof require.m !== 'object') {
+        report('聊天页启动模块表不可用，未生效。', true);
+        return;
+      }
+      inspectChatModules(require.m, true);
+    } catch (_) {
+      report('聊天页启动模块检查失败；保留原模块，未生效。', true);
+    }
   }
 
   function inspectStandaloneSign(sign) {
@@ -174,6 +266,10 @@
     if (!isArray(payload)) return;
     const modules = payload[1];
     if (!modules || typeof modules !== 'object') return;
+    if (queueName === chatQueueName) {
+      inspectChatModules(modules);
+      return;
+    }
 
     for (const id of ownKeys(modules)) {
       const descriptor = getOwnDescriptor(modules, id);
@@ -226,6 +322,12 @@
         set: (nextPush) => { currentPush = wrapPush(nextPush); }
       });
       wrappedQueues.add(queue);
+      if (queueName === chatQueueName) {
+        // Webpack consumes queued runtime callbacks before requiring its
+        // initial entry. A unique Symbol avoids colliding with real chunk
+        // IDs; this payload registers no modules and requests no download.
+        apply(currentPush, queue, [[[Symbol('bossAntiRefreshChatBootstrap')], {}, captureChatRuntime]]);
+      }
     } catch (_) {
       report('无法安装队列钩子，未生效。', true);
     }
